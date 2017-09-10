@@ -4,6 +4,11 @@ Value Investing and Analysis
 This repo contains scraping tools, analysis and visualizations based on formulae and analysis as done in the book "Value Investing and Behavioral Finance" by Parag Parikh.
 
 
+## Setup
+
+  $ ./scripts/setup.sh
+
+
 ## TODO
 
   - Scrape data for all the companies listed in NSE
