@@ -27,6 +27,7 @@ puts "You invested \"#{amount.humanize}\" for #{years} years at #{rate}% compoun
 years.times do |i|
   amount = (amount * ( 1 + (rate / 100.0) )).round(2)
   puts "At end of #{i+1} year: #{amount} or \"#{amount.humanize}\""
+  sleep 3
 end
 
 puts "If you invest it for another #{years} years: #{amount * (( 1 + (rate / 100.0) ) ** years)}"
