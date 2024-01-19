@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 )
 
 var scriptsLink = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%2050"
@@ -15,32 +16,29 @@ type Script struct {
 	NSECode string `json:"symbol"`
 }
 
+type Nifty50Data struct {
+	Priority int64  `json:"priority"`
+	Meta     Script `json:"meta,omitempty"`
+}
+
 type Nifty50Resp struct {
-	Data []struct {
-		meta Script
-	} `json:"data"`
+	Data []Nifty50Data `json:"data"`
 }
 
 func getNifty50List() []Script {
-	// client := &http.Client{
-	// 	Transport: &http.Transport{
-	// 		TLSNextProto: map[string]func(string, *tls.Conn) http.RoundTripper{},
-	// 	},
-	// 	Timeout: 5 * time.Second,
-	// }
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
 
-	// os.Setenv("GODEBUG", "http2client=0")
+	req, err := http.NewRequest("GET", scriptsLink, nil)
 
-	// req, err := http.NewRequest("GET", scriptsLink, nil)
+	if err != nil {
+		log.Fatal("Unable to construct request:", err)
+	}
 
-	// if err != nil {
-	// 	log.Fatal("Unable to construct request:", err)
-	// }
+	req.Header.Set("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
-	// resp, err := client.Do(req)
-
-	// TODO: Get over the `stream error: stream ID 1; INTERNAL_ERROR; received from peer` - Server likely has a bug in Http 2 implementation - Figure out how browser/postman are able to deal with it!
-	resp, err := http.Get(scriptsLink)
+	resp, err := client.Do(req)
 
 	if err != nil {
 		log.Fatal("Unable to fetch scripts:", err)
@@ -48,12 +46,19 @@ func getNifty50List() []Script {
 
 	var data Nifty50Resp
 
-	json.NewDecoder(resp.Body).Decode(&data)
+	err = json.NewDecoder(resp.Body).Decode(&data)
+
+	if err != nil {
+		log.Fatal("Unable to decode:", err)
+	}
 
 	var output []Script
 
 	for _, datum := range data.Data {
-		output = append(output, datum.meta)
+		if datum.Priority == 1 {
+			continue
+		}
+		output = append(output, datum.Meta)
 	}
 
 	return output
