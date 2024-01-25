@@ -1,14 +1,18 @@
 package nse
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/sync/semaphore"
 
 	"codermana.com/go/pkg/asdl/entities"
 )
@@ -19,9 +23,34 @@ var annualReports = "https://www.nseindia.com/api/annual-reports?index=equities&
 
 const UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
+const downloadThrottleFactor = 1
+const cooldownPeriod = 100 * time.Millisecond
+
 type Downloader struct {
-	client  *http.Client
-	cookies []*http.Cookie
+	destinationDir string
+	client         *http.Client
+	cookies        []*http.Cookie
+	s              *semaphore.Weighted
+}
+
+func (d *Downloader) loadCookie() {
+	req, err := http.NewRequest("GET", mainSite, nil)
+
+	if err != nil {
+		log.Fatal("Unable to construct request:", err)
+	}
+
+	req.Header.Set("user-agent", UserAgent)
+
+	resp, err := d.client.Do(req)
+
+	if err != nil || resp.StatusCode != http.StatusOK {
+		log.Fatalf("Unable to fetch cookie! status: %d | error: %s", resp.StatusCode, err)
+	}
+
+	d.cookies = resp.Cookies()
+
+	log.Debug("Cookies:", d.cookies)
 }
 
 func (d *Downloader) prepareRequest(req *http.Request) {
@@ -94,32 +123,85 @@ func (d *Downloader) PopulateStatementsList(s *entities.Script) {
 	}
 }
 
-func (d *Downloader) loadCookie() {
-	req, err := http.NewRequest("GET", mainSite, nil)
+// TODO: Add expontential backoff
+// TODO: Decompress file automatically
+func (d *Downloader) downloadFile(ctx context.Context, destinationDir, fileName, fileURL string) error {
+	err := d.s.Acquire(ctx, 1)
 
 	if err != nil {
-		log.Fatal("Unable to construct request:", err)
+		return err
 	}
 
-	req.Header.Set("user-agent", UserAgent)
+	defer d.s.Release(1)
+	defer time.Sleep(cooldownPeriod)
+
+	log.Info("Downloading :", destinationDir, fileName, fileURL)
+
+	defer log.Info("Completed Downloading :", destinationDir, fileName, fileURL)
+
+	req, err := http.NewRequest("GET", fileURL, nil)
+
+	if err != nil {
+		return err
+	}
+
+	d.prepareRequest(req)
 
 	resp, err := d.client.Do(req)
 
-	if err != nil || resp.StatusCode != http.StatusOK {
-		log.Fatalf("Unable to fetch cookie! status: %d | error: %s", resp.StatusCode, err)
+	if err != nil {
+		return err
 	}
 
-	d.cookies = resp.Cookies()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Unable to download; got status: %d for %s", resp.StatusCode, fileURL)
+	}
 
-	log.Debug("Cookies:", d.cookies)
+	f, err := os.OpenFile(filepath.Join(destinationDir, fileName), os.O_WRONLY|os.O_CREATE, 0644)
+
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(f, resp.Body)
+
+	return err
 }
 
-func NewDownloader() *Downloader {
-	client := &http.Client{
-		Timeout: 5 * time.Second,
+func (d *Downloader) DownloadFiles(ctx context.Context, s *entities.Script) {
+	scriptDir := filepath.Join(d.destinationDir, s.NSECode)
+
+	err := os.Mkdir(scriptDir, 0750)
+	if err != nil && !os.IsExist(err) {
+		log.Fatal("Unable to create script dir:", err)
 	}
 
-	downloader := &Downloader{client: client}
+	for _, stmt := range s.StatementsList.Data {
+		segments := strings.Split(stmt.FileLink, ".")
+		extension := segments[len(segments)-1]
+
+		fileName := fmt.Sprintf("%s-%s.%s", stmt.FromYear, stmt.ToYear, extension)
+		err := d.downloadFile(ctx, scriptDir, fileName, stmt.FileLink)
+
+		if err != nil {
+			log.Errorf("Unable to download: %#v got %s", stmt, err)
+		}
+	}
+}
+
+func NewDownloader(destinationDir string) *Downloader {
+	err := os.Mkdir(destinationDir, 0750)
+	if err != nil && !os.IsExist(err) {
+		log.Fatal(err)
+	}
+
+	client := &http.Client{
+		Timeout: 1 * time.Minute,
+	}
+
+	s := semaphore.NewWeighted(downloadThrottleFactor)
+
+	downloader := &Downloader{destinationDir: destinationDir, client: client, s: s}
 
 	downloader.loadCookie()
 

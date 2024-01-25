@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"sync"
@@ -12,11 +13,15 @@ import (
 )
 
 func init() {
+	log.SetReportCaller(true)
 	log.SetFormatter(&log.JSONFormatter{})
 }
 
 func main() {
-	downloader := nse.NewDownloader()
+	ctx, cancelFn := context.WithCancel(context.Background())
+	defer cancelFn()
+	downloader := nse.NewDownloader("./statements")
+	// downloader := nse.NewDownloader("%%TEMP%%/asdl") // For Windows
 
 	scripts := downloader.Nifty50List()
 
@@ -27,6 +32,7 @@ func main() {
 		go func(script *entities.Script) {
 			defer wg.Done()
 			downloader.PopulateStatementsList(script)
+			downloader.DownloadFiles(ctx, script)
 		}(script)
 	}
 
