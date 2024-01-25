@@ -2,6 +2,7 @@ package nse
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -66,6 +67,31 @@ func (d *Downloader) Nifty50List() []*entities.Script {
 	}
 
 	return output
+}
+
+func (d *Downloader) PopulateStatementsList(s *entities.Script) {
+	statementsLink := fmt.Sprintf(annualReports, s.NSECode)
+
+	req, err := http.NewRequest("GET", statementsLink, nil)
+
+	if err != nil {
+		log.Fatal("Unable to construct request:", err)
+	}
+
+	d.prepareRequest(req)
+
+	resp, err := d.client.Do(req)
+
+	if err != nil || resp.StatusCode != http.StatusOK {
+		log.Fatalf("Unable to fetch statements! status: %d | error: %s", resp.StatusCode, err)
+	}
+
+	err = json.NewDecoder(resp.Body).Decode(&s.StatementsList)
+
+	if err != nil {
+		io.Copy(os.Stderr, resp.Body)
+		log.Fatal("Unable to decode:", err)
+	}
 }
 
 func (d *Downloader) loadCookie() {
