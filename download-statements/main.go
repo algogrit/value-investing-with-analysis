@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"os"
 	"sync"
 
 	log "github.com/sirupsen/logrus"
@@ -32,10 +30,13 @@ func main() {
 		go func(script *entities.Script) {
 			defer wg.Done()
 			downloader.PopulateStatementsList(script)
-			downloader.DownloadFiles(ctx, script)
+
 		}(script)
 	}
-
 	wg.Wait()
-	json.NewEncoder(os.Stdout).Encode(scripts)
+	for _, script := range scripts {
+		downloader.DownloadFiles(ctx, script)
+	}
+	
+	// json.NewEncoder(os.Stdout).Encode(scripts)
 }

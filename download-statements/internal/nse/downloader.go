@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -24,7 +25,7 @@ var annualReports = "https://www.nseindia.com/api/annual-reports?index=equities&
 const UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 const downloadThrottleFactor = 1
-const cooldownPeriod = 100 * time.Millisecond
+const cooldownPeriod = 500 * time.Millisecond
 
 type Downloader struct {
 	destinationDir string
@@ -44,7 +45,12 @@ func (d *Downloader) loadCookie() {
 
 	resp, err := d.client.Do(req)
 
-	if err != nil || resp.StatusCode != http.StatusOK {
+	if err != nil {
+		log.Fatalf("Unable to fetch cookie! status: %d | error: %s", resp.StatusCode, err)
+	}
+
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
 		log.Fatalf("Unable to fetch cookie! status: %d | error: %s", resp.StatusCode, err)
 	}
 
@@ -72,10 +78,13 @@ func (d *Downloader) Nifty50List() []*entities.Script {
 
 	resp, err := d.client.Do(req)
 
-	if err != nil || resp.StatusCode != http.StatusOK {
+	if err != nil {
 		log.Fatalf("Unable to fetch scripts! status: %d | error: %s", resp.StatusCode, err)
 	}
-
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Fatalf("Unable to fetch scripts! status: %d | error: %s", resp.StatusCode, err)
+	}
 	var data Nifty50Resp
 
 	err = json.NewDecoder(resp.Body).Decode(&data)
@@ -111,19 +120,24 @@ func (d *Downloader) PopulateStatementsList(s *entities.Script) {
 
 	resp, err := d.client.Do(req)
 
-	if err != nil || resp.StatusCode != http.StatusOK {
+	if err != nil {
 		log.Fatalf("Unable to fetch statements! status: %d | error: %s", resp.StatusCode, err)
 	}
-
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Fatalf("Unable to fetch statements! status: %d | error: %s", resp.StatusCode, err)
+	}
 	err = json.NewDecoder(resp.Body).Decode(&s.StatementsList)
 
 	if err != nil {
 		io.Copy(os.Stderr, resp.Body)
 		log.Fatal("Unable to decode:", err)
 	}
+
 }
 
 // TODO: Add expontential backoff
+
 // TODO: Decompress file automatically
 func (d *Downloader) downloadFile(ctx context.Context, destinationDir, fileName, fileURL string) error {
 	err := d.s.Acquire(ctx, 1)
@@ -147,13 +161,27 @@ func (d *Downloader) downloadFile(ctx context.Context, destinationDir, fileName,
 
 	d.prepareRequest(req)
 
-	resp, err := d.client.Do(req)
-
-	if err != nil {
-		return err
+	client := &http.Client{
+		Timeout: 1 * time.Minute,
 	}
 
+	resp, err := client.Do(req)
+
+	if err != nil {
+		if resp != nil {
+			respBody, err := io.ReadAll(resp.Body)
+			log.Error("Response Body:", string(respBody), err)
+			log.Errorf("Response Header: %#v", resp.Header)
+		}
+
+		return err
+	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		respBody, err := io.ReadAll(resp.Body)
+		log.Error("Response Body:", string(respBody), err)
+		log.Errorf("Response Header: %#v", resp.Header)
+
 		return fmt.Errorf("Unable to download; got status: %d for %s", resp.StatusCode, fileURL)
 	}
 
