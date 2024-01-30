@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"time"
 
@@ -27,11 +29,15 @@ const UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/5
 const downloadThrottleFactor = 1
 const cooldownPeriod = 500 * time.Millisecond
 
+const retryLimit = 5
+
 type Downloader struct {
 	destinationDir string
 	client         *http.Client
 	cookies        []*http.Cookie
 	s              *semaphore.Weighted
+	retryTracker   map[string]int
+	retryMut       sync.Mutex
 }
 
 func (d *Downloader) loadCookie() {
@@ -136,14 +142,39 @@ func (d *Downloader) PopulateStatementsList(s *entities.Script) {
 
 }
 
-// TODO: Add expontential backoff
-
 // TODO: Decompress file automatically
-func (d *Downloader) downloadFile(ctx context.Context, destinationDir, fileName, fileURL string) error {
-	err := d.s.Acquire(ctx, 1)
+func (d *Downloader) downloadFile(ctx context.Context, destinationDir, fileName, fileURL string) (err error) {
+	defer func() {
+		d.retryMut.Lock()
+
+		if err == nil {
+			log.Info("Completed Downloading :", fileURL)
+		}
+
+		if err == nil || d.retryTracker[fileURL] >= retryLimit {
+			d.retryMut.Unlock()
+			return // Naked return
+		}
+
+		d.retryTracker[fileURL]++
+		d.retryMut.Unlock()
+
+		log.Warnf("Retrying %s for %d time cause of %s...", fileURL, d.retryTracker[fileURL], err)
+		err = d.downloadFile(ctx, destinationDir, fileName, fileURL)
+	}()
+
+	d.retryMut.Lock()
+	currentRetryCount := d.retryTracker[fileURL]
+	d.retryMut.Unlock()
+	if currentRetryCount > 0 {
+		sleepDur := math.Pow(2, float64(currentRetryCount))
+		time.Sleep(time.Duration(sleepDur) * time.Second)
+	}
+
+	err = d.s.Acquire(ctx, 1)
 
 	if err != nil {
-		return err
+		return
 	}
 
 	defer d.s.Release(1)
@@ -151,12 +182,10 @@ func (d *Downloader) downloadFile(ctx context.Context, destinationDir, fileName,
 
 	log.Info("Downloading :", destinationDir, fileName, fileURL)
 
-	defer log.Info("Completed Downloading :", destinationDir, fileName, fileURL)
-
 	req, err := http.NewRequest("GET", fileURL, nil)
 
 	if err != nil {
-		return err
+		return
 	}
 
 	d.prepareRequest(req)
@@ -188,12 +217,13 @@ func (d *Downloader) downloadFile(ctx context.Context, destinationDir, fileName,
 	f, err := os.OpenFile(filepath.Join(destinationDir, fileName), os.O_WRONLY|os.O_CREATE, 0644)
 
 	if err != nil {
-		return err
+		return
 	}
+	defer f.Close()
 
 	_, err = io.Copy(f, resp.Body)
 
-	return err
+	return
 }
 
 func (d *Downloader) DownloadFiles(ctx context.Context, s *entities.Script) {
@@ -229,7 +259,7 @@ func NewDownloader(destinationDir string) *Downloader {
 
 	s := semaphore.NewWeighted(downloadThrottleFactor)
 
-	downloader := &Downloader{destinationDir: destinationDir, client: client, s: s}
+	downloader := &Downloader{destinationDir: destinationDir, client: client, s: s, retryTracker: make(map[string]int)}
 
 	downloader.loadCookie()
 

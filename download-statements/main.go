@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"sync"
 
 	log "github.com/sirupsen/logrus"
@@ -11,6 +13,7 @@ import (
 )
 
 func init() {
+	log.SetLevel(log.DebugLevel)
 	log.SetReportCaller(true)
 	log.SetFormatter(&log.JSONFormatter{})
 }
@@ -34,9 +37,11 @@ func main() {
 		}(script)
 	}
 	wg.Wait()
-	for _, script := range scripts {
-		downloader.DownloadFiles(ctx, script)
-	}
-	
-	// json.NewEncoder(os.Stdout).Encode(scripts)
+	// for _, script := range scripts {
+	// 	downloader := nse.NewDownloader("./statements")
+
+	// 	downloader.DownloadFiles(ctx, script)
+	// }
+
+	json.NewEncoder(os.Stdout).Encode(scripts)
 }
