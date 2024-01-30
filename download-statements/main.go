@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"sync"
@@ -19,8 +18,8 @@ func init() {
 }
 
 func main() {
-	ctx, cancelFn := context.WithCancel(context.Background())
-	defer cancelFn()
+	// ctx, cancelFn := context.WithCancel(context.Background())
+	// defer cancelFn()
 	downloader := nse.NewDownloader("./statements")
 	// downloader := nse.NewDownloader("%%TEMP%%/asdl") // For Windows
 
