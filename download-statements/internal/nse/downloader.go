@@ -15,7 +15,6 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"golang.org/x/sync/semaphore"
 
 	"codermana.com/go/pkg/asdl/entities"
 )
@@ -26,16 +25,12 @@ var annualReports = "https://www.nseindia.com/api/annual-reports?index=equities&
 
 const UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-const downloadThrottleFactor = 1
-const cooldownPeriod = 500 * time.Millisecond
-
 const retryLimit = 5
 
 type Downloader struct {
 	destinationDir string
 	client         *http.Client
 	cookies        []*http.Cookie
-	s              *semaphore.Weighted
 	retryTracker   map[string]int
 	retryMut       sync.Mutex
 }
@@ -65,8 +60,12 @@ func (d *Downloader) loadCookie() {
 	log.Debug("Cookies:", d.cookies)
 }
 
-func (d *Downloader) prepareRequest(req *http.Request) {
+func (d *Downloader) prepareRequest(req *http.Request, ignoreCookie bool) {
 	req.Header.Set("user-agent", UserAgent)
+
+	if ignoreCookie {
+		return
+	}
 
 	for _, cookie := range d.cookies {
 		req.AddCookie(cookie)
@@ -80,7 +79,7 @@ func (d *Downloader) Nifty50List() []*entities.Script {
 		log.Fatal("Unable to construct request:", err)
 	}
 
-	d.prepareRequest(req)
+	d.prepareRequest(req, false)
 
 	resp, err := d.client.Do(req)
 
@@ -122,7 +121,7 @@ func (d *Downloader) PopulateStatementsList(s *entities.Script) {
 		log.Fatal("Unable to construct request:", err)
 	}
 
-	d.prepareRequest(req)
+	d.prepareRequest(req, false)
 
 	resp, err := d.client.Do(req)
 
@@ -142,7 +141,6 @@ func (d *Downloader) PopulateStatementsList(s *entities.Script) {
 
 }
 
-// TODO: Decompress file automatically
 func (d *Downloader) downloadFile(ctx context.Context, destinationDir, fileName, fileURL string) (err error) {
 	defer func() {
 		d.retryMut.Lock()
@@ -171,15 +169,6 @@ func (d *Downloader) downloadFile(ctx context.Context, destinationDir, fileName,
 		time.Sleep(time.Duration(sleepDur) * time.Second)
 	}
 
-	err = d.s.Acquire(ctx, 1)
-
-	if err != nil {
-		return
-	}
-
-	defer d.s.Release(1)
-	defer time.Sleep(cooldownPeriod)
-
 	log.Info("Downloading :", destinationDir, fileName, fileURL)
 
 	req, err := http.NewRequest("GET", fileURL, nil)
@@ -188,19 +177,15 @@ func (d *Downloader) downloadFile(ctx context.Context, destinationDir, fileName,
 		return
 	}
 
-	d.prepareRequest(req)
+	d.prepareRequest(req, true)
 
-	client := &http.Client{
-		Timeout: 1 * time.Minute,
-	}
-
-	resp, err := client.Do(req)
+	resp, err := d.client.Do(req)
 
 	if err != nil {
 		if resp != nil {
 			respBody, err := io.ReadAll(resp.Body)
-			log.Error("Response Body:", string(respBody), err)
-			log.Errorf("Response Header: %#v", resp.Header)
+			log.Debug("Response Body:", string(respBody), err)
+			log.Debugf("Response Header: %#v", resp.Header)
 		}
 
 		return err
@@ -208,8 +193,8 @@ func (d *Downloader) downloadFile(ctx context.Context, destinationDir, fileName,
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		respBody, err := io.ReadAll(resp.Body)
-		log.Error("Response Body:", string(respBody), err)
-		log.Errorf("Response Header: %#v", resp.Header)
+		log.Debug("Response Body:", string(respBody), err)
+		log.Debugf("Response Header: %#v", resp.Header)
 
 		return fmt.Errorf("Unable to download; got status: %d for %s", resp.StatusCode, fileURL)
 	}
@@ -257,9 +242,7 @@ func NewDownloader(destinationDir string) *Downloader {
 		Timeout: 1 * time.Minute,
 	}
 
-	s := semaphore.NewWeighted(downloadThrottleFactor)
-
-	downloader := &Downloader{destinationDir: destinationDir, client: client, s: s, retryTracker: make(map[string]int)}
+	downloader := &Downloader{destinationDir: destinationDir, client: client, retryTracker: make(map[string]int)}
 
 	downloader.loadCookie()
 
