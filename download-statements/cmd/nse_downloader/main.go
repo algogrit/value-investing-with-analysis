@@ -11,10 +11,9 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"codermana.com/go/pkg/asdl/pkg/unzipper"
-
 	"codermana.com/go/pkg/asdl/entities"
 	"codermana.com/go/pkg/asdl/internal/nse"
+	"codermana.com/go/pkg/asdl/pkg/unzipper"
 )
 
 func init() {
@@ -54,6 +53,7 @@ func main() {
 
 	ctx, cancelFn := context.WithCancel(context.Background())
 	defer cancelFn()
+
 	var unzipWG sync.WaitGroup
 
 	for _, script := range scripts {

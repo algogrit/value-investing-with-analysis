@@ -138,7 +138,6 @@ func (d *Downloader) PopulateStatementsList(s *entities.Script) {
 		io.Copy(os.Stderr, resp.Body)
 		log.Fatal("Unable to decode:", err)
 	}
-
 }
 
 func (d *Downloader) downloadFile(ctx context.Context, destinationDir, fileName, fileURL string) (err error) {
