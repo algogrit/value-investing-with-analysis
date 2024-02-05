@@ -16,7 +16,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"codermana.com/go/pkg/asdl/entities"
+	"codermana.com/go/pkg/value_analysis/entities"
 )
 
 var mainSite = "https://www.nseindia.com/companies-listing/corporate-filings-annual-reports"

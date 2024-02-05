@@ -1,6 +1,6 @@
 package nse
 
-import "codermana.com/go/pkg/asdl/entities"
+import "codermana.com/go/pkg/value_analysis/entities"
 
 type Nifty50Data struct {
 	Priority int64           `json:"priority"`

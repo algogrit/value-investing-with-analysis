@@ -1,4 +1,4 @@
-module codermana.com/go/pkg/asdl
+module codermana.com/go/pkg/value_analysis
 
 go 1.21.6
 

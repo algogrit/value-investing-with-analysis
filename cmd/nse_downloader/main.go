@@ -11,9 +11,9 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"codermana.com/go/pkg/asdl/entities"
-	"codermana.com/go/pkg/asdl/internal/nse"
-	"codermana.com/go/pkg/asdl/pkg/unzipper"
+	"codermana.com/go/pkg/value_analysis/entities"
+	"codermana.com/go/pkg/value_analysis/internal/nse"
+	"codermana.com/go/pkg/value_analysis/pkg/unzipper"
 )
 
 func init() {
