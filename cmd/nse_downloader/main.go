@@ -16,6 +16,11 @@ import (
 	"codermana.com/go/pkg/value_analysis/pkg/unzipper"
 )
 
+// TODOs
+// 1. Download not only Nifty50 but as much as possible
+// 2. Download quarterly statements as well as annual statements
+// 3. Build a similar tool for BSE
+
 func init() {
 	log.SetLevel(log.DebugLevel)
 	log.SetReportCaller(true)
