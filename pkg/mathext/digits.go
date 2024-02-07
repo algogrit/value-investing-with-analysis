@@ -1,8 +1,10 @@
 package mathext
 
 func DigitCount(n int) int {
-	if n/10 == 0 {
-		return 1
+	count := 1
+	for n/10 != 0 {
+		count++
+		n = n / 10
 	}
-	return 1 + DigitCount(n/10)
+	return count
 }
