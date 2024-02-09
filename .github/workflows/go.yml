@@ -1,0 +1,52 @@
+on:
+  push:
+    branches: [ "master" , "webdev-ka-patch-1"]
+  pull_request:
+    branches: [ "master" , "webdev-ka-patch-1"]
+
+jobs:
+
+  test-go:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.22'
+
+    - name: Download Go Modules
+      run: go mod download
+
+    - name: Run Test
+      run: go test -v ./...
+
+  build_go_executables:
+  # Build go executables and store them as artifacts
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.22'
+
+    - name: Download Go Modules
+      run: go mod download
+
+    - name: Create the ~/artifacts directory if it doesn't exist
+      run: mkdir -p ~/artifacts
+
+    - name: Build NSE downloader tools
+      run: go build -o ~/artifacts ./cmd/nse_downloader
+
+    - name: Build NSE downloader tool for windows
+      run: GOOS=windows go build -o ~/artifacts ./cmd/nse_downloader
+
+    - name: Archive
+      uses: actions/upload-artifact@v4
+      with:
+        name: excecutables
+        path: ~/artifacts
