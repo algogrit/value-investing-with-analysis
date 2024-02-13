@@ -33,6 +33,7 @@ type Downloader struct {
 	cookies        []*http.Cookie
 	retryTracker   map[string]int
 	retryMut       sync.Mutex
+	Scripts        []*entities.Script
 }
 
 func (d *Downloader) loadCookie() {
@@ -72,11 +73,12 @@ func (d *Downloader) prepareRequest(req *http.Request, ignoreCookie bool) {
 	}
 }
 
-func (d *Downloader) Nifty50List() []*entities.Script {
+func (d *Downloader) Nifty50List() error {
 	req, err := http.NewRequest("GET", scriptsLink, nil)
 
 	if err != nil {
-		log.Fatal("Unable to construct request:", err)
+		log.Error("Unable to construct request:", err)
+		return err
 	}
 
 	d.prepareRequest(req, false)
@@ -84,11 +86,13 @@ func (d *Downloader) Nifty50List() []*entities.Script {
 	resp, err := d.client.Do(req)
 
 	if err != nil {
-		log.Fatalf("Unable to fetch scripts! status: %d | error: %s", resp.StatusCode, err)
+		log.Errorf("Unable to fetch scripts! status: %d | error: %s", resp.StatusCode, err)
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		log.Fatalf("Unable to fetch scripts! status: %d | error: %s", resp.StatusCode, err)
+		log.Errorf("Unable to fetch scripts! status: %d | error: %s", resp.StatusCode, err)
+		return err
 	}
 	var data Nifty50Resp
 
@@ -96,29 +100,55 @@ func (d *Downloader) Nifty50List() []*entities.Script {
 
 	if err != nil {
 		io.Copy(os.Stderr, resp.Body)
-		log.Fatal("Unable to decode:", err)
+		log.Error("Unable to decode:", err)
+		return err
 	}
 
-	var output []*entities.Script
+	d.Scripts = make([]*entities.Script, 0, len(data.Data))
 
 	for _, datum := range data.Data {
 		if datum.Priority == 1 {
 			continue
 		}
 		script := datum.Meta
-		output = append(output, &script)
+		d.Scripts = append(d.Scripts, &script)
 	}
 
-	return output
+	return nil
 }
 
-func (d *Downloader) PopulateStatementsList(s *entities.Script) {
+func (d *Downloader) PopulateAllStatementsList() error {
+	var errs []error
+
+	var errMut sync.Mutex
+	var wg sync.WaitGroup
+	for _, script := range d.Scripts {
+		wg.Add(1)
+
+		go func(script *entities.Script) {
+			defer wg.Done()
+			err := d.PopulateStatementsList(script)
+
+			if err != nil {
+				errMut.Lock()
+				errs = append(errs, err)
+				errMut.Unlock()
+			}
+		}(script)
+	}
+	wg.Wait()
+
+	return NewErrorList(errs)
+}
+
+func (d *Downloader) PopulateStatementsList(s *entities.Script) error {
 	statementsLink := fmt.Sprintf(annualReports, s.NSECode)
 
 	req, err := http.NewRequest("GET", statementsLink, nil)
 
 	if err != nil {
-		log.Fatal("Unable to construct request:", err)
+		log.Error("Unable to construct request:", err)
+		return err
 	}
 
 	d.prepareRequest(req, false)
@@ -126,18 +156,22 @@ func (d *Downloader) PopulateStatementsList(s *entities.Script) {
 	resp, err := d.client.Do(req)
 
 	if err != nil {
-		log.Fatalf("Unable to fetch statements! status: %d | error: %s", resp.StatusCode, err)
+		log.Errorf("Unable to fetch statements! status: %d | error: %s", resp.StatusCode, err)
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		log.Fatalf("Unable to fetch statements! status: %d | error: %s", resp.StatusCode, err)
+		log.Errorf("Unable to fetch statements! status: %d | error: %s", resp.StatusCode, err)
+		return err
 	}
 	err = json.NewDecoder(resp.Body).Decode(&s.StatementsList)
 
 	if err != nil {
 		io.Copy(os.Stderr, resp.Body)
-		log.Fatal("Unable to decode:", err)
+		log.Error("Unable to decode:", err)
+		return err
 	}
+	return nil
 }
 
 func (d *Downloader) downloadFile(ctx context.Context, destinationDir, fileName, fileURL string) (err error) {

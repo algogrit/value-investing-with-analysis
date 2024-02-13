@@ -4,11 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"sync"
 
 	log "github.com/sirupsen/logrus"
 
-	"codermana.com/go/pkg/value_analysis/entities"
 	"codermana.com/go/pkg/value_analysis/internal/nse"
 )
 
@@ -26,26 +24,16 @@ func init() {
 func main() {
 	downloader := nse.NewDownloader("./statements")
 
-	scripts := downloader.Nifty50List()
+	downloader.Nifty50List()
 
-	var wg sync.WaitGroup
-	for _, script := range scripts {
-		wg.Add(1)
-
-		go func(script *entities.Script) {
-			defer wg.Done()
-			downloader.PopulateStatementsList(script)
-
-		}(script)
-	}
-	wg.Wait()
+	downloader.PopulateAllStatementsList() // Blocking for all goroutines
 
 	ctx, cancelFn := context.WithCancel(context.Background())
 	defer cancelFn()
 
-	for _, script := range scripts {
+	for _, script := range downloader.Scripts {
 		downloader.DownloadAndUnzip(ctx, script)
 	}
 
-	json.NewEncoder(os.Stdout).Encode(scripts)
+	json.NewEncoder(os.Stdout).Encode(downloader.Scripts)
 }
