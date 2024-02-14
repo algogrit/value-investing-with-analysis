@@ -11,13 +11,11 @@ jobs:
       - run:
           name: Download Go modules
           command: go mod download
-      - run:
-          name: Print go mod help instructions
-          command: "echo \"go mod download will fail if you have private repositories \nOne way to fix this for private go modules that are hosted in github:\n  1. Add a GITHUB_TOKEN and GITHUB_USER to an org context. Please refer to https://circleci.com/docs/contexts/ for more informaiton on how to use contexts.\n  2. Add a .circleci/config.yml to your repository or use this config.yml as a starting template\n  3. Configure the jobs to use the newly created context which includes GITHUB_TOKEN and GITHUB_USER  \n  4. Before downloading the modules you will need to add a step to execute \\\"go env -w GOPRIVATE=github.com/<OrgNameHere>\\\". \n\tThis allows go mod to install private repos under OrgNameHere.\n  5. You will also need to run \\\"git config --global url.\\\"https://$GITHUB_USER:$GITHUB_TOKEN@github.com/<OrgNameHere>/\\\".insteadOf \\\"https://github.com/<OrgNameHere>/\\\"\\\"\n  6. Finally include the \\\"go mod download\\\" it should be able to fetch your private libraries now. \nFor gitlab private go modules, follow the same instructions as above but include your GITLAB_TOKEN and GITLAB_USER.\nThen use gitlab.com instead of github.com in steps 4 and 5.\nSee https://go.dev/ref/mod#private-modules for more details.\""
-          when: on_fail
+
       - run:
           name: Run tests
           command: go test -v ./...
+
   build-go-executables:
     # Build go executables and store them as artifacts
     docker:
@@ -28,21 +26,38 @@ jobs:
           name: Download Go modules
           command: go mod download
       - run:
-          name: Print go mod help instructions
-          command: "echo \"go mod download will fail if you have private repositories \nOne way to fix this for private go modules that are hosted in github:\n  1. Add a GITHUB_TOKEN and GITHUB_USER to an org context. Please refer to https://circleci.com/docs/contexts/ for more informaiton on how to use contexts.\n  2. Add a .circleci/config.yml to your repository or use this config.yml as a starting template\n  3. Configure the jobs to use the newly created context which includes GITHUB_TOKEN and GITHUB_USER  \n  4. Before downloading the modules you will need to add a step to execute \\\"go env -w GOPRIVATE=github.com/<OrgNameHere>\\\". \n\tThis allows go mod to install private repos under OrgNameHere.\n  5. You will also need to run \\\"git config --global url.\\\"https://$GITHUB_USER:$GITHUB_TOKEN@github.com/<OrgNameHere>/\\\".insteadOf \\\"https://github.com/<OrgNameHere>/\\\"\\\"\n  6. Finally include the \\\"go mod download\\\" it should be able to fetch your private libraries now. \nFor gitlab private go modules, follow the same instructions as above but include your GITLAB_TOKEN and GITLAB_USER.\nThen use gitlab.com instead of github.com in steps 4 and 5.\nSee https://go.dev/ref/mod#private-modules for more details.\""
-          when: on_fail
-      - run:
           name: Create the ~/artifacts directory if it doesn't exist
           command: mkdir -p ~/artifacts
       - run:
           name: Build NSE downloader tools
-          command: go build -o ~/artifacts ./cmd/nse_downloader  
+          command: go build -o ~/artifacts ./cmd/nse_downloader
       - run:
           name: Build NSE downloader tools
-          command: GOOS=windows go build -o ~/artifacts ./cmd/nse_downloader  
+          command: GOOS=windows go build -o ~/artifacts ./cmd/nse_downloader
       - store_artifacts:
           path: ~/artifacts
           destination: executables
+
+  deploy-to-aws-lambda:
+    docker:
+      - image: cimg/go:1.22
+    steps:
+      - checkout
+      - run:
+          name: Download Go modules
+          command: go mod download
+      - run:
+          name: Install nodejs
+          command: curl -fsSL https://deb.nodesource.com/setup_21.x | sudo -E bash - && sudo apt-get install -y nodejs
+      - run:
+          name: Install Serverless
+          command: sudo npm install -g serverless
+      - run:
+          name: Build Lambda code
+          command: make build
+      - run:
+          name: Check SLS version
+          command: sls --version
 
 workflows:
   build-and-test:
@@ -51,6 +66,6 @@ workflows:
       - build-go-executables:
           requires:
             - test-go
-    # - deploy:
-    #     requires:
-    #       - build-go-executables
+      - deploy-to-aws-lambda:
+          requires:
+            - build-go-executables
