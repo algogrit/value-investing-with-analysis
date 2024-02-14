@@ -7,5 +7,5 @@ clean:
 	rm -rf ./bin
 
 deploy: clean build
-	# sls deploy --verbose
-	sls deploy function -f get_statements_list
+	sls deploy --verbose
+	# sls deploy function -f get_statements_list
