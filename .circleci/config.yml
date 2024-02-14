@@ -58,6 +58,9 @@ jobs:
       - run:
           name: Deploy to AWS
           command: make deploy
+      - run:
+          name: Remove the Function & Cleanup
+          command: sls remove
 
 workflows:
   build-and-test:
