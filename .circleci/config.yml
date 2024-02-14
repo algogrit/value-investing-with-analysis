@@ -53,11 +53,11 @@ jobs:
           name: Install Serverless
           command: sudo npm install -g serverless
       - run:
-          name: Build Lambda code
-          command: make build
-      - run:
           name: Check SLS version
           command: sls --version
+      - run:
+          name: Deploy to AWS
+          command: make deploy
 
 workflows:
   build-and-test:
@@ -69,3 +69,5 @@ workflows:
       - deploy-to-aws-lambda:
           requires:
             - build-go-executables
+          context:
+            - algogrit-aws-creds
