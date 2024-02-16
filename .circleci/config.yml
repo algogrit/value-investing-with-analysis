@@ -3,7 +3,7 @@
 version: 2.1
 orbs:
   # import CircleCI's aws-cli orb
-  aws-cli: circleci/aws-cli@3.1
+  aws-cli: circleci/aws-cli@4.1.2
 jobs:
   test-go:
     # Install go modules and run tests
@@ -61,8 +61,8 @@ jobs:
           command: sls --version
 
       - aws-cli/setup:
-          role-arn: 'arn:aws:iam::487175281388:role/circleci'
-          aws-region: "us-east-1"
+          role_arn: arn:aws:iam::487175281388:role/circleci
+          region: us-east-1
       - run:
           name: Deploy to AWS
           command: make deploy
