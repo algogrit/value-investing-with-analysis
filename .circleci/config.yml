@@ -1,6 +1,9 @@
 # This config was automatically generated from your source code
 # Stacks detected: artifact:go-executable:,deps:go:.,deps:node:.,deps:python:scripts,deps:ruby:.
 version: 2.1
+orbs:
+  # import CircleCI's aws-cli orb
+  aws-cli: circleci/aws-cli@3.1
 jobs:
   test-go:
     # Install go modules and run tests
@@ -46,6 +49,7 @@ jobs:
       - run:
           name: Download Go modules
           command: go mod download
+
       - run:
           name: Install nodejs
           command: curl -fsSL https://deb.nodesource.com/setup_21.x | sudo -E bash - && sudo apt-get install -y nodejs
@@ -55,6 +59,10 @@ jobs:
       - run:
           name: Check SLS version
           command: sls --version
+
+      - aws-cli/setup:
+          role-arn: 'arn:aws:iam::487175281388:role/circleci'
+          aws-region: "us-east-1"
       - run:
           name: Deploy to AWS
           command: make deploy
@@ -73,4 +81,4 @@ workflows:
           requires:
             - build-go-executables
           context:
-            - algogrit-aws-creds
+            - circleci-oidc
